@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Hub de Reformas — Logo -->
+  <!-- Casa estilizada com engrenagem representando reforma -->
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0B3D91;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FF8C42;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Base: casa -->
+  <path d="M32 8 L4 30 L12 30 L12 54 L52 54 L52 30 L60 30 Z"
+        fill="url(#grad)" stroke="#0B3D91" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Porta -->
+  <rect x="26" y="38" width="12" height="16" rx="1" fill="#FFFFFF" opacity="0.9"/>
+  <!-- Janela esquerda -->
+  <rect x="16" y="34" width="8" height="8" rx="1" fill="#FFFFFF" opacity="0.85"/>
+  <!-- Janela direita -->
+  <rect x="40" y="34" width="8" height="8" rx="1" fill="#FFFFFF" opacity="0.85"/>
+  <!-- Engrenagem pequena (simboliza reforma) -->
+  <circle cx="50" cy="16" r="7" fill="none" stroke="#FF8C42" stroke-width="2"/>
+  <circle cx="50" cy="16" r="3" fill="#FF8C42"/>
+  <!-- Dentes da engrenagem -->
+  <line x1="50" y1="7" x2="50" y2="10" stroke="#FF8C42" stroke-width="2" stroke-linecap="round"/>
+  <line x1="50" y1="22" x2="50" y2="25" stroke="#FF8C42" stroke-width="2" stroke-linecap="round"/>
+  <line x1="41" y1="16" x2="44" y2="16" stroke="#FF8C42" stroke-width="2" stroke-linecap="round"/>
+  <line x1="56" y1="16" x2="59" y2="16" stroke="#FF8C42" stroke-width="2" stroke-linecap="round"/>
+  <line x1="44.05" y1="10.05" x2="46.17" y2="12.17" stroke="#FF8C42" stroke-width="2" stroke-linecap="round"/>
+  <line x1="53.83" y1="19.83" x2="55.95" y2="21.95" stroke="#FF8C42" stroke-width="2" stroke-linecap="round"/>
+  <line x1="44.05" y1="21.95" x2="46.17" y2="19.83" stroke="#FF8C42" stroke-width="2" stroke-linecap="round"/>
+  <line x1="53.83" y1="12.17" x2="55.95" y2="10.05" stroke="#FF8C42" stroke-width="2" stroke-linecap="round"/>
+</svg>
