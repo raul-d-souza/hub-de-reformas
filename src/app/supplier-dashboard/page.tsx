@@ -255,6 +255,11 @@ export default function SupplierDashboardPage() {
                         <p className="font-semibold text-gray-900 text-sm">
                           {inv.project?.title || "Projeto"}
                         </p>
+                        {inv.inviter && (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Cliente: {inv.inviter.full_name || "Não informado"}
+                          </p>
+                        )}
                         {inv.message && (
                           <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{inv.message}</p>
                         )}

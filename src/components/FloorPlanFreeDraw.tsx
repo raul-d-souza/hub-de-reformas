@@ -396,9 +396,10 @@ export default function FloorPlanFreeDraw({ onComplete, onCancel }: FloorPlanFre
               )}
 
               {/* Drawn rooms */}
-              {drawnRooms.map((room) => {
+              {drawnRooms.map((room, roomIndex) => {
                 const sel = room.id === selectedId;
                 const roomColor = room.type ? getRoomConfig(room.type).color : "#94A3B8";
+                const roomNumber = roomIndex + 1;
                 return (
                   <g key={room.id}>
                     {/* Selection outline */}
@@ -431,6 +432,29 @@ export default function FloorPlanFreeDraw({ onComplete, onCancel }: FloorPlanFre
                       cursor={isDragging ? "grabbing" : "grab"}
                       onPointerDown={(e) => startDrag(e, room.id, "move")}
                     />
+
+                    {/* Room number badge */}
+                    <circle
+                      cx={room.x + 14}
+                      cy={room.y + 14}
+                      r={10}
+                      fill="#0B3D91"
+                      stroke="#fff"
+                      strokeWidth={1.5}
+                      pointerEvents="none"
+                    />
+                    <text
+                      x={room.x + 14}
+                      y={room.y + 15}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize={10}
+                      fill="white"
+                      fontWeight="bold"
+                      pointerEvents="none"
+                    >
+                      {roomNumber}
+                    </text>
 
                     {/* Icon */}
                     <text
@@ -592,7 +616,11 @@ export default function FloorPlanFreeDraw({ onComplete, onCancel }: FloorPlanFre
                       : "border-gray-200 text-gray-600 hover:bg-gray-50"
                   }`}
                 >
-                  {room.type ? getRoomConfig(room.type).icon : "📦"} {room.label || `#${i + 1}`}
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-navy text-[10px] font-bold text-white">
+                    {i + 1}
+                  </span>
+                  {room.type ? getRoomConfig(room.type).icon : "📦"}{" "}
+                  {room.label || `Cômodo ${i + 1}`}
                 </button>
               ))}
             </div>

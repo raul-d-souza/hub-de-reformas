@@ -6,10 +6,28 @@ import type {
   ProjectInvitationInsert,
   ProjectInvitationUpdate,
   ProjectInvitationWithDetails,
+  Profile,
 } from "@/types/database";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Client = SupabaseClient<any>;
+
+/** Enriquece convites com o profile do convidador (invited_by) */
+async function enrichWithInviterProfiles(
+  supabase: Client,
+  invitations: ProjectInvitationWithDetails[],
+): Promise<ProjectInvitationWithDetails[]> {
+  const inviterIds = [...new Set(invitations.map((i) => i.invited_by).filter(Boolean))];
+  if (inviterIds.length === 0) return invitations;
+
+  const { data: profiles } = await supabase.from("profiles").select("*").in("id", inviterIds);
+
+  const profileMap = new Map((profiles || []).map((p: Profile) => [p.id, p]));
+  return invitations.map((inv) => ({
+    ...inv,
+    inviter: profileMap.get(inv.invited_by) || undefined,
+  }));
+}
 
 /** Convites enviados pelo cliente para um projeto */
 export async function getProjectInvitations(supabase: Client, projectId: string) {
@@ -20,7 +38,7 @@ export async function getProjectInvitations(supabase: Client, projectId: string)
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return data as ProjectInvitationWithDetails[];
+  return enrichWithInviterProfiles(supabase, data as ProjectInvitationWithDetails[]);
 }
 
 /** Convites recebidos pelo fornecedor (todas as suas propostas) */
@@ -47,7 +65,11 @@ export async function getSupplierInvitations(
   const { data, error, count } = await query;
 
   if (error) throw error;
-  return { data: data as ProjectInvitationWithDetails[], count: count ?? 0, page, pageSize };
+  const enriched = await enrichWithInviterProfiles(
+    supabase,
+    data as ProjectInvitationWithDetails[],
+  );
+  return { data: enriched, count: count ?? 0, page, pageSize };
 }
 
 /** Cliente envia convite a fornecedor */
@@ -82,4 +104,35 @@ export async function respondToInvitation(
 export async function deleteInvitation(supabase: Client, id: string) {
   const { error } = await supabase.from("project_invitations").delete().eq("id", id);
   if (error) throw error;
+}
+
+/** Salvar cômodos selecionados para um convite */
+export async function setInvitationRooms(
+  supabase: Client,
+  invitationId: string,
+  roomIds: string[],
+) {
+  // Remover cômodos anteriores
+  await supabase.from("invitation_rooms").delete().eq("invitation_id", invitationId);
+
+  if (roomIds.length === 0) return;
+
+  const rows = roomIds.map((room_id) => ({
+    invitation_id: invitationId,
+    room_id,
+  }));
+
+  const { error } = await supabase.from("invitation_rooms").insert(rows);
+  if (error) throw error;
+}
+
+/** Buscar cômodos vinculados a um convite */
+export async function getInvitationRooms(supabase: Client, invitationId: string) {
+  const { data, error } = await supabase
+    .from("invitation_rooms")
+    .select("room_id")
+    .eq("invitation_id", invitationId);
+
+  if (error) throw error;
+  return (data || []).map((r: { room_id: string }) => r.room_id);
 }

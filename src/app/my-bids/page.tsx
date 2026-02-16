@@ -30,6 +30,9 @@ import {
   ChevronDown,
   X,
   StickyNote,
+  MapPin,
+  User,
+  Eye,
 } from "lucide-react";
 import type {
   ProjectInvitationWithDetails,
@@ -37,6 +40,9 @@ import type {
   SupplierScheduleWithDetails,
 } from "@/types/database";
 import Pagination from "@/components/Pagination";
+import FloorPlanInteractive from "@/components/FloorPlanInteractive";
+import { getRoomsByProject, ROOM_CONFIGS } from "@/services/rooms";
+import { getInvitationRooms } from "@/services/invitations";
 
 type Tab = "invitations" | "bids" | "schedules";
 
@@ -79,6 +85,37 @@ export default function MyBidsPage() {
     deadline: "",
     notes: "",
   });
+
+  // Detail modal state
+  const [detailInvitation, setDetailInvitation] = useState<ProjectInvitationWithDetails | null>(
+    null,
+  );
+  const [detailRooms, setDetailRooms] = useState<
+    { id: string; room_type: string; custom_name: string | null }[]
+  >([]);
+  const [detailInvitedRoomIds, setDetailInvitedRoomIds] = useState<Set<string>>(new Set());
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  async function openInvitationDetail(inv: ProjectInvitationWithDetails) {
+    setDetailInvitation(inv);
+    setDetailRooms([]);
+    setDetailInvitedRoomIds(new Set());
+    if (inv.project_id) {
+      setDetailLoading(true);
+      try {
+        const [rooms, invitedRoomIds] = await Promise.all([
+          getRoomsByProject(supabase, inv.project_id),
+          getInvitationRooms(supabase, inv.id),
+        ]);
+        setDetailRooms(rooms);
+        setDetailInvitedRoomIds(new Set(invitedRoomIds));
+      } catch {
+        // ignore
+      } finally {
+        setDetailLoading(false);
+      }
+    }
+  }
 
   const fetchData = useCallback(async () => {
     if (!supplier) return;
@@ -280,13 +317,25 @@ export default function MyBidsPage() {
                           {pendingInvitations.map((inv) => (
                             <div key={inv.id} className="card-solid border-l-4 border-l-amber-400">
                               <div className="flex items-start justify-between">
-                                <div>
-                                  <h4 className="font-bold text-gray-900">
+                                <button
+                                  type="button"
+                                  onClick={() => openInvitationDetail(inv)}
+                                  className="text-left flex-1 group"
+                                >
+                                  <h4 className="font-bold text-gray-900 group-hover:text-navy transition-colors flex items-center gap-2">
                                     {inv.project?.title || "Projeto"}
+                                    <Eye className="h-3.5 w-3.5 text-gray-300 group-hover:text-navy transition-colors" />
                                   </h4>
-                                  {inv.project?.description && (
-                                    <p className="mt-1 text-sm text-gray-500 line-clamp-2">
-                                      {inv.project.description}
+                                  {inv.inviter && (
+                                    <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                                      <User className="h-3 w-3" />
+                                      Cliente: {inv.inviter.full_name || "Não informado"}
+                                    </p>
+                                  )}
+                                  {inv.project?.address && (
+                                    <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+                                      <MapPin className="h-3 w-3" />
+                                      {inv.project.address}
                                     </p>
                                   )}
                                   {inv.message && (
@@ -298,7 +347,7 @@ export default function MyBidsPage() {
                                   <p className="mt-2 text-xs text-gray-400">
                                     Recebido em {formatDate(inv.created_at)}
                                   </p>
-                                </div>
+                                </button>
                                 <div className="flex gap-2 shrink-0 ml-4">
                                   <button
                                     onClick={() => handleInvitationResponse(inv.id, "rejected")}
@@ -344,14 +393,25 @@ export default function MyBidsPage() {
                               className={`card-solid border-l-4 ${inv.status === "accepted" ? "border-l-emerald-400" : "border-l-red-300"}`}
                             >
                               <div className="flex items-center justify-between">
-                                <div>
-                                  <h4 className="font-semibold text-gray-900">
+                                <button
+                                  type="button"
+                                  onClick={() => openInvitationDetail(inv)}
+                                  className="text-left flex-1 group"
+                                >
+                                  <h4 className="font-semibold text-gray-900 group-hover:text-navy transition-colors flex items-center gap-2">
                                     {inv.project?.title || "Projeto"}
+                                    <Eye className="h-3.5 w-3.5 text-gray-300 group-hover:text-navy transition-colors" />
                                   </h4>
-                                  <p className="text-xs text-gray-400">
+                                  {inv.inviter && (
+                                    <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                                      <User className="h-3 w-3" />
+                                      {inv.inviter.full_name || "Cliente"}
+                                    </p>
+                                  )}
+                                  <p className="text-xs text-gray-400 mt-0.5">
                                     {formatDate(inv.created_at)}
                                   </p>
-                                </div>
+                                </button>
                                 <div className="flex items-center gap-2">
                                   <span
                                     className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
@@ -746,6 +806,227 @@ export default function MyBidsPage() {
                     itemsPerPage={pageSize}
                   />
                 )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Detail Modal */}
+          <AnimatePresence>
+            {detailInvitation && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+                onClick={() => setDetailInvitation(null)}
+              >
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => setDetailInvitation(null)}
+                    className="absolute right-4 top-4 rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+
+                  <h2 className="text-xl font-extrabold text-gray-900 mb-1 pr-8">
+                    {detailInvitation.project?.title || "Projeto"}
+                  </h2>
+
+                  {/* Informações do Cliente */}
+                  <div className="mt-4 rounded-xl bg-surface-100 p-4">
+                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                      Cliente
+                    </h3>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-navy-50">
+                        <User className="h-5 w-5 text-navy" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-900">
+                          {detailInvitation.inviter?.full_name || "Não informado"}
+                        </p>
+                        {detailInvitation.inviter?.company_name && (
+                          <p className="text-xs text-gray-500">
+                            {detailInvitation.inviter.company_name}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Informações do Projeto */}
+                  <div className="mt-4 rounded-xl bg-surface-100 p-4">
+                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                      Detalhes do Projeto
+                    </h3>
+                    <div className="space-y-3">
+                      {detailInvitation.project?.description && (
+                        <div>
+                          <p className="text-xs font-medium text-gray-500">Descrição</p>
+                          <p className="text-sm text-gray-900">
+                            {detailInvitation.project.description}
+                          </p>
+                        </div>
+                      )}
+
+                      {detailInvitation.project?.address && (
+                        <div className="flex items-start gap-2">
+                          <MapPin className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-xs font-medium text-gray-500">Endereço</p>
+                            <p className="text-sm text-gray-900">
+                              {detailInvitation.project.address}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex gap-6">
+                        <div className="flex items-start gap-2">
+                          <Calendar className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-xs font-medium text-gray-500">Início</p>
+                            <p className="text-sm text-gray-900">
+                              {detailInvitation.project?.start_date
+                                ? formatDate(detailInvitation.project.start_date)
+                                : "A definir"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <Calendar className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-xs font-medium text-gray-500">Previsão de término</p>
+                            <p className="text-sm text-gray-900">
+                              {detailInvitation.project?.end_date
+                                ? formatDate(detailInvitation.project.end_date)
+                                : "A definir"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            detailInvitation.project?.status === "in_progress"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : detailInvitation.project?.status === "completed"
+                                ? "bg-gray-100 text-gray-600"
+                                : "bg-blue-50 text-blue-700"
+                          }`}
+                        >
+                          {detailInvitation.project?.status === "in_progress"
+                            ? "Em andamento"
+                            : detailInvitation.project?.status === "completed"
+                              ? "Concluído"
+                              : detailInvitation.project?.status === "cancelled"
+                                ? "Cancelado"
+                                : "Planejamento"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Mensagem do convite */}
+                  {detailInvitation.message && (
+                    <div className="mt-4 rounded-xl bg-blue-50 p-4">
+                      <h3 className="text-sm font-semibold text-blue-800 mb-2 flex items-center gap-2">
+                        <StickyNote className="h-4 w-4" /> Mensagem do Convite
+                      </h3>
+                      <p className="text-sm text-blue-900">{detailInvitation.message}</p>
+                    </div>
+                  )}
+
+                  {/* Planta Baixa */}
+                  {(detailInvitation.project?.floor_plan_layout ||
+                    detailInvitation.project?.floor_plan_image_url) &&
+                    detailRooms.length > 0 && (
+                      <div className="mt-4 rounded-xl bg-surface-100 p-4">
+                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                          Planta Baixa
+                          {detailInvitedRoomIds.size > 0 && (
+                            <span className="ml-2 text-xs font-normal text-green-600">
+                              ({detailInvitedRoomIds.size} cômodo
+                              {detailInvitedRoomIds.size !== 1 ? "s" : ""} convidado
+                              {detailInvitedRoomIds.size !== 1 ? "s" : ""})
+                            </span>
+                          )}
+                        </h3>
+                        {detailLoading ? (
+                          <div className="flex items-center justify-center py-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-navy" />
+                          </div>
+                        ) : (
+                          <FloorPlanInteractive
+                            rooms={detailRooms.map((r) => ({
+                              type: r.room_type as import("@/types/database").RoomType,
+                              customName: r.custom_name,
+                            }))}
+                            initialLayout={
+                              (detailInvitation.project?.floor_plan_layout as
+                                | import("@/components/FloorPlanInteractive").InteractiveRoom[]
+                                | null) || undefined
+                            }
+                            backgroundImage={
+                              detailInvitation.project?.floor_plan_image_url || undefined
+                            }
+                            editable={false}
+                            width={600}
+                            height={400}
+                            highlightedIndices={
+                              detailInvitedRoomIds.size > 0
+                                ? new Set(
+                                    detailRooms
+                                      .map((r, i) => (detailInvitedRoomIds.has(r.id) ? i : -1))
+                                      .filter((i) => i >= 0),
+                                  )
+                                : undefined
+                            }
+                          />
+                        )}
+                      </div>
+                    )}
+
+                  {/* Cômodos */}
+                  {detailRooms.length > 0 && !detailInvitation.project?.floor_plan_layout && (
+                    <div className="mt-4 rounded-xl bg-surface-100 p-4">
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                        Cômodos ({detailRooms.length})
+                        {detailInvitedRoomIds.size > 0 && (
+                          <span className="ml-2 text-xs font-normal text-green-600">
+                            • verde = convidado
+                          </span>
+                        )}
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {detailRooms.map((room, i) => {
+                          const invited = detailInvitedRoomIds.has(room.id);
+                          return (
+                            <span
+                              key={room.id}
+                              className={`rounded-full px-3 py-1 text-xs font-medium shadow-sm ${
+                                invited
+                                  ? "bg-green-100 text-green-800 ring-1 ring-green-300"
+                                  : detailInvitedRoomIds.size > 0
+                                    ? "bg-gray-100 text-gray-400"
+                                    : "bg-white text-gray-700"
+                              }`}
+                            >
+                              #{i + 1} {room.custom_name || room.room_type}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
               </motion.div>
             )}
           </AnimatePresence>

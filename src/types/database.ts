@@ -38,11 +38,19 @@ export interface Project {
   end_date: string | null;
   status: ProjectStatus;
   owner_id: string;
+  floor_plan_layout: Record<string, unknown>[] | null;
+  floor_plan_image_url: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export type ProjectInsert = Omit<Project, "id" | "created_at" | "updated_at">;
+export type ProjectInsert = Omit<
+  Project,
+  "id" | "created_at" | "updated_at" | "floor_plan_layout" | "floor_plan_image_url"
+> & {
+  floor_plan_layout?: Record<string, unknown>[] | null;
+  floor_plan_image_url?: string | null;
+};
 export type ProjectUpdate = Partial<Omit<Project, "id" | "created_at" | "updated_at" | "owner_id">>;
 
 /* ─── Items ─── */
@@ -372,6 +380,7 @@ export interface ProjectInvitation {
 export interface ProjectInvitationWithDetails extends ProjectInvitation {
   project?: Project;
   supplier?: Supplier;
+  inviter?: Profile;
 }
 
 export type ProjectInvitationInsert = Omit<

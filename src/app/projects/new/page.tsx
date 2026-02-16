@@ -103,6 +103,8 @@ export default function NewProjectPage() {
         start_date: data.start_date || null,
         end_date: data.end_date || null,
         owner_id: user.id,
+        floor_plan_layout: roomLayout.length > 0 ? roomLayout.map((r) => ({ ...r })) : null,
+        floor_plan_image_url: bgImage ?? null,
       });
 
       if (selectedRooms.length > 0) {

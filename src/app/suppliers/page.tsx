@@ -6,10 +6,11 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { deleteSupplier } from "@/services/suppliers";
+import { useAuth } from "@/hooks/useAuth";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Pagination from "@/components/Pagination";
-import type { Supplier } from "@/types/database";
+import type { Supplier, Profile } from "@/types/database";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -27,7 +28,8 @@ import {
 
 export default function SuppliersPage() {
   const supabase = createClient();
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const { user } = useAuth();
+  const [suppliers, setSuppliers] = useState<(Supplier & { profile?: Profile | null })[]>([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -62,7 +64,23 @@ export default function SuppliersPage() {
 
         if (error) throw error;
 
-        setSuppliers(data || []);
+        // Buscar profiles para mostrar nome fantasia (company_name)
+        const userIds = (data || []).map((s: Supplier) => s.user_id).filter(Boolean);
+        let profiles: Profile[] = [];
+        if (userIds.length > 0) {
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("*")
+            .in("id", userIds);
+          profiles = profileData || [];
+        }
+
+        const enriched = (data || []).map((s: Supplier) => ({
+          ...s,
+          profile: profiles.find((p) => p.id === s.user_id) || null,
+        }));
+
+        setSuppliers(enriched);
         setTotalCount(count || 0);
       } catch (err) {
         console.error("Erro ao carregar fornecedores:", err);
@@ -84,7 +102,19 @@ export default function SuppliersPage() {
         .range(offset, offset + pageSize - 1)
         .order(sortBy, { ascending: sortOrder === "asc" });
 
-      setSuppliers(data || []);
+      const userIds = (data || []).map((s: Supplier) => s.user_id).filter(Boolean);
+      let profiles: Profile[] = [];
+      if (userIds.length > 0) {
+        const { data: profileData } = await supabase.from("profiles").select("*").in("id", userIds);
+        profiles = profileData || [];
+      }
+
+      const enriched = (data || []).map((s: Supplier) => ({
+        ...s,
+        profile: profiles.find((p) => p.id === s.user_id) || null,
+      }));
+
+      setSuppliers(enriched);
       setTotalCount(count || 0);
     } catch (err) {
       console.error("Erro ao excluir:", err);
@@ -189,55 +219,62 @@ export default function SuppliersPage() {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    className="card-interactive"
                   >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-gray-900">{supplier.name}</h3>
-                        {supplier.contact_name && (
-                          <p className="text-sm text-gray-500 mt-0.5">{supplier.contact_name}</p>
+                    <Link
+                      href={`/marketplace/${supplier.id}`}
+                      className="card-interactive block h-full"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1">
+                          <h3 className="font-bold text-gray-900">
+                            {supplier.profile?.company_name || supplier.name}
+                          </h3>
+                          {supplier.contact_name && (
+                            <p className="text-sm text-gray-500 mt-0.5">{supplier.contact_name}</p>
+                          )}
+                        </div>
+                        {renderStars(supplier.rating)}
+                      </div>
+
+                      <div className="space-y-2 text-sm text-gray-500">
+                        {supplier.phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-3.5 w-3.5 text-gray-400" />
+                            <span>{supplier.phone}</span>
+                          </div>
+                        )}
+                        {supplier.email && (
+                          <div className="flex items-center gap-2">
+                            <Mail className="h-3.5 w-3.5 text-gray-400" />
+                            <span className="truncate">{supplier.email}</span>
+                          </div>
+                        )}
+                        {supplier.website && (
+                          <div className="flex items-center gap-2">
+                            <Globe className="h-3.5 w-3.5 text-gray-400" />
+                            <span className="truncate text-navy">
+                              {supplier.website.replace(/^https?:\/\//, "")}
+                            </span>
+                          </div>
                         )}
                       </div>
-                      {renderStars(supplier.rating)}
-                    </div>
 
-                    <div className="space-y-2 text-sm text-gray-500">
-                      {supplier.phone && (
-                        <div className="flex items-center gap-2">
-                          <Phone className="h-3.5 w-3.5 text-gray-400" />
-                          <span>{supplier.phone}</span>
-                        </div>
-                      )}
-                      {supplier.email && (
-                        <div className="flex items-center gap-2">
-                          <Mail className="h-3.5 w-3.5 text-gray-400" />
-                          <span className="truncate">{supplier.email}</span>
-                        </div>
-                      )}
-                      {supplier.website && (
-                        <div className="flex items-center gap-2">
-                          <Globe className="h-3.5 w-3.5 text-gray-400" />
-                          <a
-                            href={supplier.website}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="truncate text-navy hover:underline"
+                      {user && supplier.owner_id === user.id && (
+                        <div className="mt-4 pt-3 border-t border-gray-50">
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDelete(supplier.id);
+                            }}
+                            className="flex items-center gap-1.5 text-xs font-medium text-red-500 transition-colors hover:text-red-600"
                           >
-                            {supplier.website.replace(/^https?:\/\//, "")}
-                          </a>
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Excluir
+                          </button>
                         </div>
                       )}
-                    </div>
-
-                    <div className="mt-4 pt-3 border-t border-gray-50">
-                      <button
-                        onClick={() => handleDelete(supplier.id)}
-                        className="flex items-center gap-1.5 text-xs font-medium text-red-500 transition-colors hover:text-red-600"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Excluir
-                      </button>
-                    </div>
+                    </Link>
                   </motion.div>
                 ))}
               </div>

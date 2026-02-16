@@ -290,6 +290,26 @@ export default function FloorPlanFromPhoto({ onComplete, onCancel }: FloorPlanFr
                     strokeWidth={2}
                     rx={3}
                   />
+                  {/* Room number badge */}
+                  <circle
+                    cx={room.x + 14}
+                    cy={room.y + 14}
+                    r={10}
+                    fill="#0B3D91"
+                    stroke="#fff"
+                    strokeWidth={1.5}
+                  />
+                  <text
+                    x={room.x + 14}
+                    y={room.y + 15}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fontSize={10}
+                    fill="white"
+                    fontWeight="bold"
+                  >
+                    {i + 1}
+                  </text>
                   <text
                     x={room.x + room.w / 2}
                     y={room.y + room.h / 2}

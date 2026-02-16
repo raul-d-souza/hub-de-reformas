@@ -94,6 +94,7 @@ export const itemSchema = z.object({
   quantity: z.coerce.number().positive("Quantidade deve ser positiva"),
   unit: z.string().min(1, "Unidade é obrigatória"),
   estimated_unit_price: z.coerce.number().min(0, "Preço deve ser >= 0"),
+  room_id: z.string().uuid().optional().or(z.literal("")),
 });
 export type ItemFormData = z.infer<typeof itemSchema>;
 

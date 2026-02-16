@@ -113,6 +113,7 @@ export default function MarketplacePage() {
     const filtered = data.filter((s) => {
       const matchSearch =
         s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (s.profile?.company_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (s.contact_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (s.profile?.specialty || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (s.profile?.city || "").toLowerCase().includes(searchTerm.toLowerCase());
@@ -251,7 +252,9 @@ export default function MarketplacePage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-gray-900 truncate">{s.name}</h3>
+                            <h3 className="font-bold text-gray-900 truncate">
+                              {s.profile?.company_name || s.name}
+                            </h3>
                             {s.isOwn && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700">
                                 <Crown className="h-3 w-3" /> Seu Perfil

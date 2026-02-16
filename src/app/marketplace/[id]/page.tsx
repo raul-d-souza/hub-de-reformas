@@ -8,7 +8,8 @@ import { createClient } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import { getSupplierServices } from "@/services/supplierServices";
-import { createInvitation } from "@/services/invitations";
+import { createInvitation, setInvitationRooms } from "@/services/invitations";
+import { getRoomsByProject, ROOM_CONFIGS } from "@/services/rooms";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { formatCurrency } from "@/lib/format";
@@ -34,7 +35,7 @@ import {
   Edit,
   Boxes,
 } from "lucide-react";
-import type { Supplier, Profile, SupplierService, Project } from "@/types/database";
+import type { Supplier, Profile, SupplierService, Project, ProjectRoom } from "@/types/database";
 import Link from "next/link";
 
 const CATEGORY_CONFIG = {
@@ -65,6 +66,9 @@ export default function SupplierProfilePage({ params }: { params: Promise<{ id: 
   const [inviteMessage, setInviteMessage] = useState("");
   const [inviting, setInviting] = useState(false);
   const [inviteSuccess, setInviteSuccess] = useState(false);
+  const [projectRooms, setProjectRooms] = useState<ProjectRoom[]>([]);
+  const [selectedRoomIds, setSelectedRoomIds] = useState<Set<string>>(new Set());
+  const [loadingRooms, setLoadingRooms] = useState(false);
 
   // Edit service modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -113,24 +117,63 @@ export default function SupplierProfilePage({ params }: { params: Promise<{ id: 
     fetch();
   }, [id, user, supabase]);
 
+  async function handleProjectChange(projectId: string) {
+    setSelectedProject(projectId);
+    setSelectedRoomIds(new Set());
+    setProjectRooms([]);
+    if (!projectId) return;
+    setLoadingRooms(true);
+    try {
+      const rooms = await getRoomsByProject(supabase, projectId);
+      setProjectRooms(rooms);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingRooms(false);
+    }
+  }
+
+  function toggleRoom(roomId: string) {
+    setSelectedRoomIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(roomId)) next.delete(roomId);
+      else next.add(roomId);
+      return next;
+    });
+  }
+
   async function handleInvite() {
     if (!user || !selectedProject) return;
     setInviting(true);
     try {
-      await createInvitation(supabase, {
+      const invitation = await createInvitation(supabase, {
         project_id: selectedProject,
         supplier_id: id,
         invited_by: user.id,
         status: "pending",
         message: inviteMessage || null,
       });
+
+      // Salvar cômodos selecionados
+      if (selectedRoomIds.size > 0) {
+        await setInvitationRooms(supabase, invitation.id, [...selectedRoomIds]);
+      }
+
       setInviteSuccess(true);
       setTimeout(() => {
         setShowInvite(false);
         setInviteSuccess(false);
+        setSelectedRoomIds(new Set());
+        setProjectRooms([]);
       }, 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao enviar convite");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const code = (err as { code?: string })?.code;
+      if (code === "23505" || msg.includes("duplicate key") || msg.includes("23505")) {
+        setError("Este fornecedor já foi convidado para o projeto selecionado.");
+      } else {
+        setError(msg || "Erro ao enviar convite");
+      }
     } finally {
       setInviting(false);
     }
@@ -188,7 +231,9 @@ export default function SupplierProfilePage({ params }: { params: Promise<{ id: 
                 <HardHat className="h-8 w-8 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-extrabold text-gray-900">{supplier.name}</h1>
+                <h1 className="text-2xl font-extrabold text-gray-900">
+                  {profile?.company_name || supplier.name}
+                </h1>
                 {supplier.contact_name && <p className="text-gray-500">{supplier.contact_name}</p>}
                 <div className="mt-2 flex flex-wrap items-center gap-3">
                   {profile?.specialty && (
@@ -217,7 +262,13 @@ export default function SupplierProfilePage({ params }: { params: Promise<{ id: 
               </div>
             </div>
             {user && (
-              <button onClick={() => setShowInvite(true)} className="btn-primary shrink-0">
+              <button
+                onClick={() => {
+                  setShowInvite(true);
+                  setError(null);
+                }}
+                className="btn-primary shrink-0"
+              >
                 <Send className="h-4 w-4" /> Convidar para projeto
               </button>
             )}
@@ -510,7 +561,7 @@ export default function SupplierProfilePage({ params }: { params: Promise<{ id: 
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                         <Send className="h-5 w-5 text-navy" />
-                        Convidar {supplier.name}
+                        Convidar {profile?.company_name || supplier.name}
                       </h3>
                       <button onClick={() => setShowInvite(false)} className="btn-ghost !p-2">
                         <X className="h-4 w-4" />
@@ -524,7 +575,7 @@ export default function SupplierProfilePage({ params }: { params: Promise<{ id: 
                         </label>
                         <select
                           value={selectedProject}
-                          onChange={(e) => setSelectedProject(e.target.value)}
+                          onChange={(e) => handleProjectChange(e.target.value)}
                           className="input"
                         >
                           <option value="">Escolha um projeto...</option>
@@ -535,6 +586,54 @@ export default function SupplierProfilePage({ params }: { params: Promise<{ id: 
                           ))}
                         </select>
                       </div>
+
+                      {/* Seleção de cômodos */}
+                      {selectedProject && (
+                        <div>
+                          <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                            Cômodos (opcional — deixe vazio para todo o projeto)
+                          </label>
+                          {loadingRooms ? (
+                            <div className="flex items-center gap-2 py-2 text-sm text-gray-400">
+                              <Loader2 className="h-4 w-4 animate-spin" /> Carregando cômodos...
+                            </div>
+                          ) : projectRooms.length === 0 ? (
+                            <p className="text-xs text-gray-400 py-2">
+                              Nenhum cômodo cadastrado neste projeto.
+                            </p>
+                          ) : (
+                            <div className="flex flex-wrap gap-2 mt-1">
+                              {projectRooms.map((room, i) => {
+                                const config = ROOM_CONFIGS.find((c) => c.type === room.room_type);
+                                const selected = selectedRoomIds.has(room.id);
+                                return (
+                                  <button
+                                    key={room.id}
+                                    type="button"
+                                    onClick={() => toggleRoom(room.id)}
+                                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all border ${
+                                      selected
+                                        ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                                        : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
+                                    }`}
+                                  >
+                                    <span>{config?.icon || "🏠"}</span>#{i + 1}{" "}
+                                    {room.custom_name || config?.label || room.room_type}
+                                    {selected && <CheckCircle2 className="h-3 w-3 ml-0.5" />}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                          {selectedRoomIds.size > 0 && (
+                            <p className="text-xs text-emerald-600 mt-1.5">
+                              {selectedRoomIds.size} cômodo{selectedRoomIds.size > 1 ? "s" : ""}{" "}
+                              selecionado{selectedRoomIds.size > 1 ? "s" : ""}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
                       <div>
                         <label className="mb-1.5 block text-sm font-medium text-gray-700">
                           Mensagem (opcional)
@@ -552,22 +651,36 @@ export default function SupplierProfilePage({ params }: { params: Promise<{ id: 
                       </div>
                     </div>
 
-                    <div className="mt-6 flex justify-end gap-2">
-                      <button onClick={() => setShowInvite(false)} className="btn-ghost">
-                        Cancelar
-                      </button>
-                      <button
-                        onClick={handleInvite}
-                        disabled={inviting || !selectedProject}
-                        className="btn-primary"
-                      >
-                        {inviting ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Send className="h-4 w-4" />
-                        )}
-                        Enviar Convite
-                      </button>
+                    <div className="mt-6 flex flex-col gap-3">
+                      {error && (
+                        <div className="flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-600">
+                          <AlertCircle className="h-4 w-4 shrink-0" />
+                          {error}
+                        </div>
+                      )}
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => {
+                            setShowInvite(false);
+                            setError(null);
+                          }}
+                          className="btn-ghost"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          onClick={handleInvite}
+                          disabled={inviting || !selectedProject}
+                          className="btn-primary"
+                        >
+                          {inviting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+                          Enviar Convite
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}

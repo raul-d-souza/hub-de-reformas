@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabaseClient";
 import { formatCurrency } from "@/lib/format";
 import { getItemsWithPaymentSummary, createItem, updateItem, deleteItem } from "@/services/items";
 import { getSuppliers } from "@/services/suppliers";
+import { getProjectInvitations } from "@/services/invitations";
 import {
   getSuppliersByProject,
   addSupplierToItem,
@@ -24,7 +25,11 @@ import type {
   PaymentCategory,
   Supplier,
   ItemSupplierWithDetails,
+  ProjectRoom,
 } from "@/types/database";
+import { getRoomsByProject } from "@/services/rooms";
+import { ROOM_CONFIGS } from "@/services/rooms";
+import { useAuth } from "@/hooks/useAuth";
 import {
   Plus,
   Pencil,
@@ -60,6 +65,7 @@ type CategoryFilter = "all" | PaymentCategory;
 
 export default function ItemList({ projectId }: ItemListProps) {
   const supabase = createClient();
+  const { user } = useAuth();
   const [items, setItems] = useState<ItemPaymentSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -74,11 +80,12 @@ export default function ItemList({ projectId }: ItemListProps) {
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [addingSupplierItemId, setAddingSupplierItemId] = useState<string | null>(null);
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
-  const [supplierUnitPrice, setSupplierUnitPrice] = useState("");
   const [supplierNote, setSupplierNote] = useState("");
   const [editingItemSupplierId, setEditingItemSupplierId] = useState<string | null>(null);
-  const [editPrice, setEditPrice] = useState("");
   const [editNote, setEditNote] = useState("");
+
+  // Room state
+  const [rooms, setRooms] = useState<ProjectRoom[]>([]);
 
   const {
     register,
@@ -93,12 +100,25 @@ export default function ItemList({ projectId }: ItemListProps) {
 
   const loadItems = useCallback(async () => {
     try {
-      const [data, suppliersData] = await Promise.all([
+      const [data, suppliersData, roomsData, invitationsData] = await Promise.all([
         getItemsWithPaymentSummary(supabase, projectId),
         getSuppliers(supabase),
+        getRoomsByProject(supabase, projectId).catch(() => [] as ProjectRoom[]),
+        getProjectInvitations(supabase, projectId).catch(() => []),
       ]);
       setItems(data);
-      setAllSuppliers(suppliersData);
+      setRooms(roomsData);
+
+      // Filtrar fornecedores:
+      // 1. Fornecedores criados pelo próprio usuário (sem user_id = criado manualmente)
+      // 2. Fornecedores que aceitaram convite para este projeto
+      const acceptedSupplierIds = new Set(
+        invitationsData.filter((inv) => inv.status === "accepted").map((inv) => inv.supplier_id),
+      );
+      const filteredSuppliers = suppliersData.filter(
+        (s) => (s.owner_id === user?.id && !s.user_id) || acceptedSupplierIds.has(s.id),
+      );
+      setAllSuppliers(filteredSuppliers);
 
       // Carrega vínculos item↔fornecedor (pode falhar se migration não aplicada ainda)
       try {
@@ -133,6 +153,7 @@ export default function ItemList({ projectId }: ItemListProps) {
           quantity: data.quantity,
           unit: data.unit,
           estimated_unit_price: data.estimated_unit_price,
+          room_id: data.room_id || null,
         });
       } else {
         await createItem(supabase, {
@@ -143,6 +164,7 @@ export default function ItemList({ projectId }: ItemListProps) {
           quantity: data.quantity,
           unit: data.unit,
           estimated_unit_price: data.estimated_unit_price,
+          room_id: data.room_id || null,
         });
       }
       reset();
@@ -162,6 +184,7 @@ export default function ItemList({ projectId }: ItemListProps) {
     setValue("quantity", item.quantity);
     setValue("unit", item.unit);
     setValue("estimated_unit_price", item.estimated_unit_price);
+    setValue("room_id", item.room_id ?? "");
     setShowForm(true);
   }
 
@@ -185,17 +208,18 @@ export default function ItemList({ projectId }: ItemListProps) {
   function openAddSupplierForm(itemId: string) {
     setAddingSupplierItemId(itemId);
     setSelectedSupplierId("");
-    setSupplierUnitPrice("");
     setSupplierNote("");
   }
 
   async function handleAddSupplier(itemId: string) {
     if (!selectedSupplierId) return;
     try {
+      // Usa o preço unitário estimado do próprio item
+      const item = items.find((i) => i.id === itemId);
       await addSupplierToItem(supabase, {
         item_id: itemId,
         supplier_id: selectedSupplierId,
-        unit_price: parseFloat(supplierUnitPrice) || 0,
+        unit_price: item?.estimated_unit_price ?? 0,
         note: supplierNote || null,
       });
       setAddingSupplierItemId(null);
@@ -208,14 +232,12 @@ export default function ItemList({ projectId }: ItemListProps) {
 
   function startEditItemSupplier(is: ItemSupplierWithDetails) {
     setEditingItemSupplierId(is.id);
-    setEditPrice(String(is.unit_price));
     setEditNote(is.note ?? "");
   }
 
   async function handleSaveItemSupplier(id: string) {
     try {
       await updateItemSupplier(supabase, id, {
-        unit_price: parseFloat(editPrice) || 0,
         note: editNote || null,
       });
       setEditingItemSupplierId(null);
@@ -348,7 +370,7 @@ export default function ItemList({ projectId }: ItemListProps) {
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <div>
               <input
                 type="number"
@@ -381,6 +403,20 @@ export default function ItemList({ projectId }: ItemListProps) {
                 aria-label="Preço unitário estimado"
               />
             </div>
+            <div>
+              <select {...register("room_id")} className="input" aria-label="Cômodo associado">
+                <option value="">Sem cômodo</option>
+                {rooms.map((room) => {
+                  const config = ROOM_CONFIGS.find((c) => c.type === room.room_type);
+                  return (
+                    <option key={room.id} value={room.id}>
+                      {config?.icon ?? "📐"} {config?.label ?? room.room_type}
+                      {room.custom_name ? ` — ${room.custom_name}` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
           </div>
 
           <button type="submit" className="btn-primary">
@@ -404,6 +440,7 @@ export default function ItemList({ projectId }: ItemListProps) {
               <tr className="border-b border-gray-100 bg-surface-100 text-xs font-semibold uppercase tracking-wider text-gray-500">
                 <th className="px-3 py-2">Item</th>
                 <th className="px-3 py-2">Categoria</th>
+                <th className="px-3 py-2">Cômodo</th>
                 <th className="px-3 py-2">Qtd</th>
                 <th className="px-3 py-2">Unidade</th>
                 <th className="px-3 py-2">Preço Unit.</th>
@@ -431,6 +468,21 @@ export default function ItemList({ projectId }: ItemListProps) {
                         >
                           {CATEGORY_LABELS[item.category] || item.category}
                         </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        {(() => {
+                          if (!item.room_id)
+                            return <span className="text-xs text-gray-300">—</span>;
+                          const room = rooms.find((r) => r.id === item.room_id);
+                          if (!room) return <span className="text-xs text-gray-300">—</span>;
+                          const config = ROOM_CONFIGS.find((c) => c.type === room.room_type);
+                          return (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                              {config?.icon ?? "📐"} {config?.label ?? room.room_type}
+                              {room.custom_name ? ` — ${room.custom_name}` : ""}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-3 py-2 text-gray-600">{item.quantity}</td>
                       <td className="px-3 py-2 text-gray-600">{item.unit}</td>
@@ -477,7 +529,7 @@ export default function ItemList({ projectId }: ItemListProps) {
                     {/* Painel expandido de fornecedores */}
                     {isExpanded && (
                       <tr key={`${item.id}-suppliers`} className="bg-surface-100">
-                        <td colSpan={8} className="px-4 py-3">
+                        <td colSpan={9} className="px-4 py-3">
                           <div className="space-y-3">
                             <div className="flex items-center justify-between">
                               <h4 className="flex items-center gap-1.5 text-sm font-semibold text-gray-800">
@@ -515,14 +567,6 @@ export default function ItemList({ projectId }: ItemListProps) {
                                           {is.supplier.name}
                                         </span>
                                         <input
-                                          type="number"
-                                          step="0.01"
-                                          value={editPrice}
-                                          onChange={(e) => setEditPrice(e.target.value)}
-                                          className="input w-32 !py-1.5 text-sm"
-                                          placeholder="Preço (R$)"
-                                        />
-                                        <input
                                           value={editNote}
                                           onChange={(e) => setEditNote(e.target.value)}
                                           className="input flex-1 min-w-[120px] !py-1.5 text-sm"
@@ -554,11 +598,11 @@ export default function ItemList({ projectId }: ItemListProps) {
                                             )}
                                           </p>
                                           <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                                            <span className="font-semibold text-navy">
-                                              {formatCurrency(is.unit_price)}
-                                            </span>
                                             {is.supplier.phone && (
                                               <span>📱 {is.supplier.phone}</span>
+                                            )}
+                                            {is.supplier.email && (
+                                              <span>✉️ {is.supplier.email}</span>
                                             )}
                                             {is.note && (
                                               <span className="italic text-gray-400">
@@ -608,22 +652,10 @@ export default function ItemList({ projectId }: ItemListProps) {
                                     {getAvailableSuppliers(item.id).map((s) => (
                                       <option key={s.id} value={s.id}>
                                         {s.name}
+                                        {s.user_id ? " ✅" : ""}
                                       </option>
                                     ))}
                                   </select>
-                                </div>
-                                <div className="w-32">
-                                  <label className="mb-1 block text-xs font-medium text-gray-600">
-                                    Preço Unit. (R$)
-                                  </label>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    value={supplierUnitPrice}
-                                    onChange={(e) => setSupplierUnitPrice(e.target.value)}
-                                    className="input !py-1.5 text-sm"
-                                    placeholder="0.00"
-                                  />
                                 </div>
                                 <div className="flex-1 min-w-[120px]">
                                   <label className="mb-1 block text-xs font-medium text-gray-600">
@@ -661,7 +693,7 @@ export default function ItemList({ projectId }: ItemListProps) {
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-gray-200 font-semibold">
-                <td colSpan={5} className="px-3 py-2 text-right text-gray-700">
+                <td colSpan={6} className="px-3 py-2 text-right text-gray-700">
                   Total Estimado:
                 </td>
                 <td className="px-3 py-2 text-navy">{formatCurrency(totalEstimated)}</td>

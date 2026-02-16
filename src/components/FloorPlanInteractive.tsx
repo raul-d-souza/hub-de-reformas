@@ -30,6 +30,8 @@ interface FloorPlanInteractiveProps {
   editable?: boolean;
   width?: number;
   height?: number;
+  /** Indices of rooms to highlight (green fill) — used for invitation rooms */
+  highlightedIndices?: Set<number>;
 }
 
 /* ─── Constantes ─── */
@@ -112,6 +114,7 @@ export default function FloorPlanInteractive({
   editable = true,
   width,
   height,
+  highlightedIndices,
 }: FloorPlanInteractiveProps) {
   const [layout, setLayout] = useState<InteractiveRoom[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -365,10 +368,27 @@ export default function FloorPlanInteractive({
           />
 
           {/* Rooms */}
-          {layout.map((room) => {
+          {layout.map((room, roomIndex) => {
             const sel = selectedId === room.id;
             const fs = Math.min(12, Math.max(8, room.w / 10));
             const iconSz = Math.min(18, Math.max(12, room.w / 5));
+            const roomNumber = roomIndex + 1;
+
+            /* Highlighting logic for invitation rooms */
+            const hasHighlight = highlightedIndices && highlightedIndices.size > 0;
+            const isHighlighted = hasHighlight && highlightedIndices.has(roomIndex);
+            const isMuted = hasHighlight && !isHighlighted;
+
+            const fillColor = isHighlighted ? "#22c55e" : isMuted ? "#9ca3af" : room.color;
+            const strokeColor = sel
+              ? "#0B3D91"
+              : isHighlighted
+                ? "#16a34a"
+                : isMuted
+                  ? "#9ca3af"
+                  : room.color;
+            const fillOpacity = isHighlighted ? 0.25 : isMuted ? 0.08 : 0.15;
+            const labelColor = isMuted ? "#aaa" : "#333";
 
             return (
               <g key={room.id}>
@@ -378,9 +398,9 @@ export default function FloorPlanInteractive({
                   y={room.y}
                   width={room.w}
                   height={room.h}
-                  fill={room.color}
-                  fillOpacity={0.15}
-                  stroke={sel ? "#0B3D91" : room.color}
+                  fill={fillColor}
+                  fillOpacity={fillOpacity}
+                  stroke={strokeColor}
                   strokeWidth={sel ? 2.5 : 1.5}
                   rx={3}
                   filter={sel ? "url(#fp-shadow)" : undefined}
@@ -395,13 +415,36 @@ export default function FloorPlanInteractive({
                   width={Math.max(0, room.w - 6)}
                   height={Math.max(0, room.h - 6)}
                   fill="none"
-                  stroke={room.color}
+                  stroke={fillColor}
                   strokeWidth={0.5}
                   strokeOpacity={0.3}
                   strokeDasharray="3 3"
                   rx={2}
                   pointerEvents="none"
                 />
+
+                {/* Room number badge */}
+                <circle
+                  cx={room.x + 14}
+                  cy={room.y + 14}
+                  r={10}
+                  fill={isHighlighted ? "#16a34a" : isMuted ? "#9ca3af" : "#0B3D91"}
+                  stroke="#fff"
+                  strokeWidth={1.5}
+                  pointerEvents="none"
+                />
+                <text
+                  x={room.x + 14}
+                  y={room.y + 15}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize={10}
+                  fill="white"
+                  fontWeight="bold"
+                  pointerEvents="none"
+                >
+                  {roomNumber}
+                </text>
 
                 {/* Door indicator */}
                 {room.h > 50 && (
@@ -410,7 +453,7 @@ export default function FloorPlanInteractive({
                     y1={room.y}
                     x2={room.x + room.w * 0.6}
                     y2={room.y}
-                    stroke={room.color}
+                    stroke={fillColor}
                     strokeWidth={3}
                     strokeOpacity={0.4}
                     strokeDasharray="2 2"
@@ -436,7 +479,7 @@ export default function FloorPlanInteractive({
                   y={room.y + room.h / 2 + iconSz * 0.7}
                   textAnchor="middle"
                   fontSize={fs}
-                  fill="#333"
+                  fill={labelColor}
                   fontWeight="600"
                   dominantBaseline="central"
                   pointerEvents="none"
