@@ -41,7 +41,7 @@ import type {
 } from "@/types/database";
 import Pagination from "@/components/Pagination";
 import FloorPlanInteractive from "@/components/FloorPlanInteractive";
-import { getRoomsByProject, ROOM_CONFIGS } from "@/services/rooms";
+import { getRoomsByProject } from "@/services/rooms";
 import { getInvitationRooms } from "@/services/invitations";
 
 type Tab = "invitations" | "bids" | "schedules";
@@ -915,20 +915,22 @@ export default function MyBidsPage() {
                       <div className="flex items-center gap-2">
                         <span
                           className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            detailInvitation.project?.status === "in_progress"
+                            detailInvitation.project?.status === "active"
                               ? "bg-emerald-50 text-emerald-700"
-                              : detailInvitation.project?.status === "completed"
+                              : detailInvitation.project?.status === "done"
                                 ? "bg-gray-100 text-gray-600"
-                                : "bg-blue-50 text-blue-700"
+                                : detailInvitation.project?.status === "paused"
+                                  ? "bg-amber-50 text-amber-700"
+                                  : "bg-blue-50 text-blue-700"
                           }`}
                         >
-                          {detailInvitation.project?.status === "in_progress"
+                          {detailInvitation.project?.status === "active"
                             ? "Em andamento"
-                            : detailInvitation.project?.status === "completed"
+                            : detailInvitation.project?.status === "done"
                               ? "Concluído"
-                              : detailInvitation.project?.status === "cancelled"
-                                ? "Cancelado"
-                                : "Planejamento"}
+                              : detailInvitation.project?.status === "paused"
+                                ? "Pausado"
+                                : "Rascunho"}
                         </span>
                       </div>
                     </div>
@@ -967,7 +969,8 @@ export default function MyBidsPage() {
                           <FloorPlanInteractive
                             rooms={detailRooms.map((r) => ({
                               type: r.room_type as import("@/types/database").RoomType,
-                              customName: r.custom_name,
+                              customName: r.custom_name ?? undefined,
+                              quantity: 1,
                             }))}
                             initialLayout={
                               (detailInvitation.project?.floor_plan_layout as

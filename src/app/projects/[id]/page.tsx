@@ -495,7 +495,7 @@ export default function ProjectDetailPage() {
                           }, [])}
                           initialLayout={
                             project.floor_plan_layout
-                              ? (project.floor_plan_layout as InteractiveRoom[])
+                              ? (project.floor_plan_layout as unknown as InteractiveRoom[])
                               : undefined
                           }
                           onLayoutChange={handleLayoutChange}
@@ -626,15 +626,10 @@ export default function ProjectDetailPage() {
                           : null;
 
                         const isAccepted = inv.status === "accepted";
-                        const CardWrapper = isAccepted ? Link : "div";
-                        const cardProps = isAccepted
-                          ? { href: `/projects/${project.id}/bids?supplier=${inv.supplier_id}` }
-                          : {};
 
-                        return (
-                          <CardWrapper
+                        const cardContent = (
+                          <div
                             key={inv.id}
-                            {...(cardProps as Record<string, string>)}
                             className={`card-solid flex items-start gap-4 transition-shadow hover:shadow-md ${
                               isAccepted
                                 ? "cursor-pointer ring-1 ring-green-200 hover:ring-green-300"
@@ -646,14 +641,14 @@ export default function ProjectDetailPage() {
                               className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
                                 inv.status === "accepted"
                                   ? "bg-green-100 text-green-600"
-                                  : inv.status === "declined"
+                                  : inv.status === "rejected"
                                     ? "bg-red-100 text-red-500"
                                     : "bg-amber-100 text-amber-600"
                               }`}
                             >
                               {inv.status === "accepted" ? (
                                 <UserCheck className="h-5 w-5" />
-                              ) : inv.status === "declined" ? (
+                              ) : inv.status === "rejected" ? (
                                 <UserX className="h-5 w-5" />
                               ) : (
                                 <Clock className="h-5 w-5" />
@@ -680,14 +675,14 @@ export default function ProjectDetailPage() {
                                   className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                                     inv.status === "accepted"
                                       ? "bg-green-100 text-green-700"
-                                      : inv.status === "declined"
+                                      : inv.status === "rejected"
                                         ? "bg-red-100 text-red-600"
                                         : "bg-amber-100 text-amber-700"
                                   }`}
                                 >
                                   {inv.status === "accepted"
                                     ? "Aceito"
-                                    : inv.status === "declined"
+                                    : inv.status === "rejected"
                                       ? "Recusado"
                                       : "Pendente"}
                                 </span>
@@ -745,7 +740,18 @@ export default function ProjectDetailPage() {
                                 <Gavel className="h-3.5 w-3.5" /> Ver Lances →
                               </span>
                             )}
-                          </CardWrapper>
+                          </div>
+                        );
+
+                        return isAccepted ? (
+                          <Link
+                            key={inv.id}
+                            href={`/projects/${project.id}/bids?supplier=${inv.supplier_id}`}
+                          >
+                            {cardContent}
+                          </Link>
+                        ) : (
+                          <div key={inv.id}>{cardContent}</div>
                         );
                       })}
                     </div>
